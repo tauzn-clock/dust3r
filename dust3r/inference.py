@@ -70,6 +70,31 @@ def inference(pairs, model, device, batch_size=8, verbose=True):
 
     return result
 
+@torch.no_grad()
+def inference_with_mask(pairs, model, device, masks, batch_size=8, verbose=True):
+    if verbose:
+        print(f'>> Inference with model on {len(pairs)} image pairs')
+    result = []
+
+    # first, check if all images have the same size
+    multiple_shapes = not (check_if_same_size(pairs))
+    if multiple_shapes:  # force bs=1
+        batch_size = 1
+
+    for i in tqdm.trange(0, len(pairs), batch_size, disable=not verbose):
+        res = loss_of_one_batch(collate_with_cat(pairs[i:i+batch_size]), model, None, device)
+        res["pred1"]["conf"] = mask_to_conf(res["pred1"]["conf"], masks[res["view1"]["idx"][0]])
+        res["pred2"]["conf"] = mask_to_conf(res["pred2"]["conf"], masks[res["view2"]["idx"][0]])
+        result.append(to_cpu(res))
+
+    result = collate_with_cat(result, lists=multiple_shapes)
+
+    return result
+
+
+def mask_to_conf(conf,mask):
+    conf = conf * mask
+    return conf
 
 def check_if_same_size(pairs):
     shapes1 = [img1['img'].shape[-2:] for img1, img2 in pairs]
