@@ -1,4 +1,5 @@
 data/
+masked_dust3r/data
 checkpoints/
 
 # Byte-compiled / optimized / DLL files
@@ -130,3 +131,4 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
