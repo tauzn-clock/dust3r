@@ -104,8 +104,8 @@ def mask_to_conf(conf,mask):
 
     # Apply 2d gaussian filter to mask
 
-    size = 91
-    sigma = 31
+    size = 11
+    sigma = 3
 
     gaussian_kernel = create_gaussian_kernel(size, sigma).to(mask.device)
     gaussian_kernel = gaussian_kernel.unsqueeze(0).unsqueeze(0)
@@ -113,8 +113,8 @@ def mask_to_conf(conf,mask):
     #mask = mask + 0.01
     mask = mask / mask.max()
     mask = mask.squeeze(0).squeeze(0)
-    conf = conf * mask
-    conf = torch.exp(conf)
+    conf = (conf -1) * mask
+    conf = conf + 1
 
     #conf = torch.where(mask == 0, torch.ones_like(conf) * 0.5, conf) 
     return conf
