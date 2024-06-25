@@ -46,7 +46,6 @@ def loss_of_one_batch(batch, model, criterion, device, symmetrize_batch=False, u
         # loss is supposed to be symmetric
         with torch.cuda.amp.autocast(enabled=False):
             loss = criterion(view1, view2, pred1, pred2) if criterion is not None else None
-
     result = dict(view1=view1, view2=view2, pred1=pred1, pred2=pred2, loss=loss)
     return result[ret] if ret else result
 
@@ -91,9 +90,33 @@ def inference_with_mask(pairs, model, device, masks, batch_size=8, verbose=True)
 
     return result
 
+# Function to create a 2D Gaussian kernel
+def create_gaussian_kernel(size, sigma):
+    """Creates a 2D Gaussian kernel."""
+    x = torch.linspace(-size // 2 + 1, size // 2, size)
+    y = torch.linspace(-size // 2 + 1, size // 2, size)
+    xx, yy = torch.meshgrid(x, y)
+    kernel = torch.exp(-(xx**2 + yy**2) / (2 * sigma**2))
+    kernel = kernel / kernel.sum()
+    return kernel
 
 def mask_to_conf(conf,mask):
+
+    # Apply 2d gaussian filter to mask
+
+    size = 91
+    sigma = 31
+
+    gaussian_kernel = create_gaussian_kernel(size, sigma).to(mask.device)
+    gaussian_kernel = gaussian_kernel.unsqueeze(0).unsqueeze(0)
+    mask = torch.nn.functional.conv2d(mask.unsqueeze(0).unsqueeze(0), gaussian_kernel, padding=size//2)
+    #mask = mask + 0.01
+    mask = mask / mask.max()
+    mask = mask.squeeze(0).squeeze(0)
     conf = conf * mask
+    conf = torch.exp(conf)
+
+    #conf = torch.where(mask == 0, torch.ones_like(conf) * 0.5, conf) 
     return conf
 
 def check_if_same_size(pairs):
