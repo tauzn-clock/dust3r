@@ -70,7 +70,7 @@ def inference(pairs, model, device, batch_size=8, verbose=True):
     return result
 
 @torch.no_grad()
-def inference_with_mask(pairs, model, device, masks, batch_size=8, verbose=True):
+def inference_with_mask(pairs, model, device, masks, sigma, batch_size=8, verbose=True):
     if verbose:
         print(f'>> Inference with model on {len(pairs)} image pairs')
     result = []
@@ -82,8 +82,8 @@ def inference_with_mask(pairs, model, device, masks, batch_size=8, verbose=True)
 
     for i in tqdm.trange(0, len(pairs), batch_size, disable=not verbose):
         res = loss_of_one_batch(collate_with_cat(pairs[i:i+batch_size]), model, None, device)
-        res["pred1"]["conf"] = mask_to_conf(res["pred1"]["conf"], masks[res["view1"]["idx"][0]])
-        res["pred2"]["conf"] = mask_to_conf(res["pred2"]["conf"], masks[res["view2"]["idx"][0]])
+        res["pred1"]["conf"] = mask_to_conf(res["pred1"]["conf"], masks[res["view1"]["idx"][0]], sigma)
+        res["pred2"]["conf"] = mask_to_conf(res["pred2"]["conf"], masks[res["view2"]["idx"][0]], sigma)
         result.append(to_cpu(res))
 
     result = collate_with_cat(result, lists=multiple_shapes)
@@ -100,12 +100,11 @@ def create_gaussian_kernel(size, sigma):
     kernel = kernel / kernel.sum()
     return kernel
 
-def mask_to_conf(conf,mask):
+def mask_to_conf(conf,mask,sigma):
 
     # Apply 2d gaussian filter to mask
-
-    size = 11
-    sigma = 3
+    size = int(sigma * 3)
+    if size%2==0: size+=1
 
     gaussian_kernel = create_gaussian_kernel(size, sigma).to(mask.device)
     gaussian_kernel = gaussian_kernel.unsqueeze(0).unsqueeze(0)
@@ -116,7 +115,6 @@ def mask_to_conf(conf,mask):
     conf = (conf -1) * mask
     conf = conf + 1
 
-    #conf = torch.where(mask == 0, torch.ones_like(conf) * 0.5, conf) 
     return conf
 
 def check_if_same_size(pairs):
