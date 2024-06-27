@@ -14,6 +14,8 @@ from PIL import Image
 import open3d as o3d
 import torch
 import json
+from utils.image import *
+from utils.constraint import *
 
 from dust3r.inference import inference_with_mask
 from dust3r.model import AsymmetricCroCo3DStereo
@@ -21,13 +23,18 @@ from dust3r.utils.image import load_images
 from dust3r.image_pairs import make_pairs
 from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
 
-DATA_PATH = "/dust3r/masked_dust3r/data/jackal_training_data_0"
-IMG_FILE_EXTENSION = ".png"
-MASK_FILE_EXTENSION = ".png"
+DATA_PATH = "/dust3r/masked_dust3r/data/chicken"
+IMG_FILE_EXTENSION = ".jpg"
+MASK_FILE_EXTENSION = ".jpg.png"
 GAUSSIAN_SIGMA = 3.0
-INIT_FRAMES = 15
-RECURRING_FRAMES = 5
-TOTAL_IMGS = 15
+INIT_FRAMES = 10
+RECURRING_FRAMES = 10
+TOTAL_IMGS = 10
+
+IS_FOCAL_FIXED = False
+IS_BEST_FIT_PLANE = False
+IS_ZERO_Z = False
+FOCAL_LENGTH = 4.74
 
 device = 'cuda'
 batch_size = 1
@@ -35,12 +42,14 @@ schedule = 'cosine'
 lr = 0.01
 niter = 300
 
+# Load the model
+
 model_name = "checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
 # you can put the path to a local checkpoint in model_name if needed
 model = AsymmetricCroCo3DStereo.from_pretrained(model_name).to(device)
 
-
-# load_images can take a list of images or a directory
+#STEP 1: Perform initial match using INIT_FRAMES frames
+ 
 images_array = []
 masks_array = []
 
@@ -48,17 +57,8 @@ for i in range(INIT_FRAMES):
     images_array.append(os.path.join(DATA_PATH,"masked_images/{}{}".format(i,IMG_FILE_EXTENSION)))
     masks_array.append(os.path.join(DATA_PATH,"masks/{}{}".format(i,MASK_FILE_EXTENSION)))
 images = load_images(images_array, size=512, verbose=True)
-
-masks = []
-
-for i in range(len(masks_array)):
-    mask = Image.open(masks_array[i]).convert('L')
-    _,_,H,W = images[i]["img"].shape
-    mask = mask.resize((W,H))
-
-    mask = np.array(mask)
-    mask = torch.tensor(mask).to(device)/255
-    masks.append(mask)
+_,_,H,W = images[0]["img"].shape
+masks = load_masks(masks_array, H, W, device)
 
 pairs = make_pairs(images, scene_graph='complete', prefilter=None, symmetrize=True)
 output = inference_with_mask(pairs, model, device, masks, GAUSSIAN_SIGMA, batch_size=batch_size)
@@ -101,9 +101,14 @@ for i in range(len(poses)):
     else:
         print("No confidence in Frame {}".format(i))
 
+if IS_BEST_FIT_PLANE: transforms["frames"] = rotate_best_fit_plane(transforms["frames"])
+if IS_ZERO_Z: transforms["frames"] = zero_z(transforms["frames"])
+
 #Save transform file
 with open("{}/transforms.json".format(DATA_PATH), 'w') as f:
     json.dump(transforms, f, indent=4)
+
+# STEP 2: Match Future Frames
 
 for new_img_index in range(INIT_FRAMES, TOTAL_IMGS):
     print("Looking at frame {}...".format(new_img_index))
@@ -126,17 +131,8 @@ for new_img_index in range(INIT_FRAMES, TOTAL_IMGS):
     preset_pose.append(np.eye(4))
 
     images = load_images(images_array, size=512, verbose=True)
-
-    masks = []
-
-    for i in range(len(masks_array)):
-        mask = Image.open(masks_array[i]).convert('L')
-        _,_,H,W = images[i]["img"].shape
-        mask = mask.resize((W,H))
-
-        mask = np.array(mask)
-        mask = torch.tensor(mask).to(device)/255
-        masks.append(mask)
+    _,_,H,W = images[0]["img"].shape
+    masks = load_masks(masks_array, H, W, device)
     
     pairs = make_pairs(images, scene_graph='complete', prefilter=None, symmetrize=True)
     output = inference_with_mask(pairs, model, device, masks, GAUSSIAN_SIGMA, batch_size=batch_size)
@@ -155,10 +151,16 @@ for new_img_index in range(INIT_FRAMES, TOTAL_IMGS):
 
     if (confidence_masks[-1]!=0).all():
         print("No confidence in Frame {}".format(new_img_index))       
+        pass
+
+    new_tf = poses[-1].detach().cpu().numpy().tolist()
+    if abs(new_tf[2][3]) > 0.1:
+        pass
+    new_tf[2][3] = 0
 
     new_frame = {
         "file_path" : "/".join(images_array[-1].split("/")[-2:]),
-        "transform_matrix" : poses[-1].detach().cpu().numpy().tolist(),
+        "transform_matrix" : new_tf,
         "mask_path" : "/".join(masks_array[-1].split("/")[-2:])
     }
     transforms["frames"].append(new_frame)
