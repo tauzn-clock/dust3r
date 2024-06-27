@@ -27,7 +27,7 @@ MASK_FILE_EXTENSION = ".png"
 GAUSSIAN_SIGMA = 3.0
 INIT_FRAMES = 15
 RECURRING_FRAMES = 5
-TOTAL_IMGS = 50
+TOTAL_IMGS = 15
 
 device = 'cuda'
 batch_size = 1
@@ -142,7 +142,7 @@ for new_img_index in range(INIT_FRAMES, TOTAL_IMGS):
     output = inference_with_mask(pairs, model, device, masks, GAUSSIAN_SIGMA, batch_size=batch_size)
 
     scene = global_aligner(output, device=device, mode=GlobalAlignerMode.ModularPointCloudOptimizer)
-    scene.preset_focal(preset_focal, preset_mask)
+    scene.preset_focal(preset_focal, [True for _ in range(RECURRING_FRAMES+1)])
     scene.preset_pose(preset_pose, preset_mask)
 
     loss = scene.compute_global_alignment(init="mst", niter=niter, schedule=schedule, lr=lr)
