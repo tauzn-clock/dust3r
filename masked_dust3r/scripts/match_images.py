@@ -23,17 +23,17 @@ from dust3r.utils.image import load_images
 from dust3r.image_pairs import make_pairs
 from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
 
-DATA_PATH = "/dust3r/masked_dust3r/data/chicken"
-IMG_FILE_EXTENSION = ".jpg"
-MASK_FILE_EXTENSION = ".jpg.png"
+DATA_PATH = "/dust3r/masked_dust3r/data/jackal_training_data_0"
+IMG_FILE_EXTENSION = ".png"
+MASK_FILE_EXTENSION = ".png"
 GAUSSIAN_SIGMA = 3.0
 INIT_FRAMES = 10
-RECURRING_FRAMES = 10
-TOTAL_IMGS = 10
+RECURRING_FRAMES = 7
+TOTAL_IMGS = 50
 
 IS_FOCAL_FIXED = False
-IS_BEST_FIT_PLANE = False
-IS_ZERO_Z = False
+IS_BEST_FIT_PLANE = True
+IS_ZERO_Z = True
 FOCAL_LENGTH = 4.74
 
 device = 'cuda'
@@ -86,8 +86,8 @@ img = Image.open(images_array[0])
 width, height = img.size
 transforms["w"] = width
 transforms["h"] = height
-transforms["cx"] = width//2
-transforms["cy"] = height//2
+transforms["cx"] = width/2
+transforms["cy"] = height/2
 
 transforms["frames"] = []
 
@@ -118,23 +118,24 @@ for new_img_index in range(INIT_FRAMES, TOTAL_IMGS):
     preset_focal = [transforms["fl_x"] for _ in range(RECURRING_FRAMES+1)]
     preset_pose = []
     preset_mask = [True for _ in range(RECURRING_FRAMES+1)]
-    preset_mask[-1] = False
+    preset_mask[0] = False
+
+    images_array.append(os.path.join(DATA_PATH,"masked_images/{}{}".format(new_img_index,IMG_FILE_EXTENSION)))
+    masks_array.append(os.path.join(DATA_PATH,"masks/{}{}".format(new_img_index,MASK_FILE_EXTENSION)))
+    preset_pose.append(np.eye(4))
 
     for i in range(-RECURRING_FRAMES,0):
         images_array.append(os.path.join(DATA_PATH,transforms["frames"][i]["file_path"]))
         masks_array.append(os.path.join(DATA_PATH,transforms["frames"][i]["mask_path"]))
         preset_pose.append(np.array(transforms["frames"][i]["transform_matrix"]))
         print("Using {}...".format(transforms["frames"][i]["file_path"]))
-
-    images_array.append(os.path.join(DATA_PATH,"masked_images/{}{}".format(new_img_index,IMG_FILE_EXTENSION)))
-    masks_array.append(os.path.join(DATA_PATH,"masks/{}{}".format(new_img_index,MASK_FILE_EXTENSION)))
-    preset_pose.append(np.eye(4))
+    preset_pose[0] = preset_pose[-1]
 
     images = load_images(images_array, size=512, verbose=True)
     _,_,H,W = images[0]["img"].shape
     masks = load_masks(masks_array, H, W, device)
     
-    pairs = make_pairs(images, scene_graph='complete', prefilter=None, symmetrize=True)
+    pairs = make_pairs(images, scene_graph='oneref-0', prefilter=None, symmetrize=True)
     output = inference_with_mask(pairs, model, device, masks, GAUSSIAN_SIGMA, batch_size=batch_size)
 
     scene = global_aligner(output, device=device, mode=GlobalAlignerMode.ModularPointCloudOptimizer)
@@ -149,19 +150,19 @@ for new_img_index in range(INIT_FRAMES, TOTAL_IMGS):
     pts3d = scene.get_pts3d()
     confidence_masks = scene.get_masks()
 
-    if (confidence_masks[-1]!=0).all():
+    if (confidence_masks[0]!=0).all():
         print("No confidence in Frame {}".format(new_img_index))       
         pass
 
-    new_tf = poses[-1].detach().cpu().numpy().tolist()
+    new_tf = poses[0].detach().cpu().numpy().tolist()
     if abs(new_tf[2][3]) > 0.1:
         pass
     new_tf[2][3] = 0
 
     new_frame = {
-        "file_path" : "/".join(images_array[-1].split("/")[-2:]),
+        "file_path" : "/".join(images_array[0].split("/")[-2:]),
         "transform_matrix" : new_tf,
-        "mask_path" : "/".join(masks_array[-1].split("/")[-2:])
+        "mask_path" : "/".join(masks_array[0].split("/")[-2:])
     }
     transforms["frames"].append(new_frame)
 
