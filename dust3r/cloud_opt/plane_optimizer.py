@@ -19,12 +19,18 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
     Graph node: images
     Graph edges: observations = (pred1, pred2)
     """
-    def __init__(self, *args, weight_focal = 0.1, weight_z = 0.1, weight_rot = 0.001, weight_smoothness = 0.01, **kwargs):
+    def __init__(self, *args, 
+                 weight_focal = 0.1, 
+                 weight_z = 0.1, 
+                 weight_rot = 0.001, 
+                 weight_trans_smoothness = 0.01, 
+                 weight_rot_smoothness = 0.01, **kwargs):
         super().__init__(*args, **kwargs)
         self.weight_z = weight_z
         self.weight_focal = weight_focal
         self.weight_rot = weight_rot
-        self.weight_smoothness = weight_smoothness
+        self.weight_trans_smoothness = weight_trans_smoothness
+        self.weight_rot_smoothness = weight_rot_smoothness
 
     def forward(self, ret_details=False):
         pw_poses = self.get_pw_poses()  # cam-to-world
@@ -50,6 +56,7 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
             if ret_details:
                 details[i, j] = li + lj
 
+        loss /= self.n_edges  # average over all pairs
 
         all_focal = torch.stack([focal for focal in self.im_focals])
         loss = loss + self.weight_focal * (all_focal.max() - all_focal.min())
@@ -65,9 +72,8 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
         loss = loss + self.weight_rot * (euler[:,1].max() - euler[:,1].min())
 
         for i in range(len(all_poses)-2):
-            loss = loss + self.weight_smoothness * (all_poses[i+1,4:7] - 2*all_poses[i,4:7] + all_poses[i+2,4:7]).abs().mean()
-
-        loss /= self.n_edges  # average over all pairs
+            loss = loss + self.weight_trans_smoothness * (all_poses[i,4:7] - 2*all_poses[i+1,4:7] + all_poses[i+2,4:7]).abs().mean()
+            loss = loss + self.weight_rot_smoothness * (all_poses[i,:4] - 2*all_poses[i+1,:4] + all_poses[i+2,:4]).abs().mean()
 
         if ret_details:
             return loss, details
