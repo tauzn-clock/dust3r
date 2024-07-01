@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image
 import torch
 import json
+import re
 
 from dust3r.inference import inference_with_mask
 from dust3r.model import AsymmetricCroCo3DStereo
@@ -27,10 +28,9 @@ DATA_PATH = "/dust3r/masked_dust3r/data/jackal_drive"
 IMG_FILE_EXTENSION = ".png"
 MASK_FILE_EXTENSION = ".png"
 GAUSSIAN_SIGMA = 1.0
-INIT_FRAMES = 50
-NEW_FRAMES = 5
-PREVIOUS_FRAMES = 15
-TOTAL_FRAMES = 300
+INIT_FRAMES = 5
+TOTAL_FRAMES = 50
+PREVIOUS_FRAMES = 5
 
 INIT_WEIGHT_FOCAL = 0.1
 INIT_WEIGHT_Z = 0.1
@@ -38,11 +38,11 @@ INIT_WEIGHT_ROT = 0.1
 INIT_WEIGHT_TRANS_SMOOTHNESS = 0.001
 INIT_WEIGHT_ROT_SMOOTHNESS = 0.001
 
-NEW_WEIGHT_FOCAL = 0
+NEW_WEIGHT_FOCAL = 0.1
 NEW_WEIGHT_Z = 0.1
 NEW_WEIGHT_ROT = 0.1
-NEW_WEIGHT_TRANS_SMOOTHNESS = 0.00
-NEW_WEIGHT_ROT_SMOOTHNESS = 0.00
+NEW_WEIGHT_TRANS_SMOOTHNESS = 0.001
+NEW_WEIGHT_ROT_SMOOTHNESS = 0.001
 
 IS_FOCAL_FIXED = True
 FOCAL_LENGTH = 4.74
@@ -63,13 +63,12 @@ model = AsymmetricCroCo3DStereo.from_pretrained(model_name).to(device)
 images_array = []
 masks_array = []
 
-for i in range(0,50):
+for i in range(0,TOTAL_FRAMES, TOTAL_FRAMES//INIT_FRAMES):
     images_array.append(os.path.join(DATA_PATH,"masked_images/{}{}".format(i,IMG_FILE_EXTENSION)))
     masks_array.append(os.path.join(DATA_PATH,"masks/{}{}".format(i,MASK_FILE_EXTENSION)))
+    
 images = load_images(images_array, size=512, verbose=True)
-
 _,_,H,W = images[0]["img"].shape
-
 masks = load_masks(masks_array, H, W, device)
 
 pairs = make_pairs(images, scene_graph='swin', prefilter=None, symmetrize=True)
@@ -127,28 +126,34 @@ with open("{}/transforms.json".format(DATA_PATH), 'w') as f:
 
 # STEP 2: Match Future Frames
 
-for start_frame_index in range(INIT_FRAMES, TOTAL_FRAMES, NEW_FRAMES):
+for frame in range(len(transforms["frames"])):
+    start_index = re.split("\.|/", transforms["frames"][frame]["file_path"])[1]
+    start_index = int(start_index)
+
+    end_index = re.split("\.|/", transforms["frames"][frame+1]["file_path"])[1]
+    end_index = int(end_index)
+
     images_array = []
     masks_array = []
 
-    preset_focal = [transforms["fl_x"] for _ in range(PREVIOUS_FRAMES+NEW_FRAMES)]
-    preset_pose = []
-    preset_mask = [True for _ in range(PREVIOUS_FRAMES+NEW_FRAMES)]
-    preset_mask[PREVIOUS_FRAMES:] = [False for _ in range(NEW_FRAMES)]
+    preset_focal = [transforms["fl_x"] for _ in range(end_index - start_index + 1)]
+    preset_mask = [True for _ in range(len(preset_focal))]
+    preset_mask[1:len(preset_mask)-1] = [False for _ in range(end_index - start_index - 1)]
 
-    for i in range(len(transforms["frames"])-PREVIOUS_FRAMES, len(transforms["frames"])):
-        images_array.append(os.path.join(DATA_PATH,transforms["frames"][i]["file_path"]))
-        masks_array.append(os.path.join(DATA_PATH,transforms["frames"][i]["mask_path"]))
-        preset_pose.append(np.array(transforms["frames"][i]["transform_matrix"]))
-        print("Refering to {}...".format(transforms["frames"][i]["file_path"]))
+    start_pose = np.array(transforms["frames"][frame]["transform_matrix"])
+    end_pose = np.array(transforms["frames"][frame+1]["transform_matrix"])
+    preset_pose = interpolate_pose(start_pose, end_pose, end_index - start_index + 1, device)
 
-    last_known_pose = preset_pose[-1]
+    images_array.append(os.path.join(DATA_PATH,transforms["frames"][frame]["file_path"]))
+    masks_array.append(os.path.join(DATA_PATH,transforms["frames"][frame]["mask_path"]))
 
-    for i in range(start_frame_index, start_frame_index + NEW_FRAMES):
+    for i in range(start_index+1, end_index):
         images_array.append(os.path.join(DATA_PATH,"masked_images/{}{}".format(i,IMG_FILE_EXTENSION)))
         masks_array.append(os.path.join(DATA_PATH,"masks/{}{}".format(i,MASK_FILE_EXTENSION)))
-        preset_pose.append(last_known_pose)
         print("Estimating for {}...".format(os.path.join(DATA_PATH,"masked_images/{}{}".format(i,IMG_FILE_EXTENSION))))
+
+    images_array.append(os.path.join(DATA_PATH,transforms["frames"][frame+1]["file_path"]))
+    masks_array.append(os.path.join(DATA_PATH,transforms["frames"][frame+1]["mask_path"]))
 
     images = load_images(images_array, size=512, verbose=True)
     _,_,H,W = images[0]["img"].shape
@@ -163,7 +168,7 @@ for start_frame_index in range(INIT_FRAMES, TOTAL_FRAMES, NEW_FRAMES):
                             weight_rot = NEW_WEIGHT_ROT,
                             weight_trans_smoothness = NEW_WEIGHT_TRANS_SMOOTHNESS,
                             weight_rot_smoothness = NEW_WEIGHT_ROT_SMOOTHNESS)
-    scene.preset_focal(preset_focal, [True for _ in range(PREVIOUS_FRAMES+NEW_FRAMES)])
+    scene.preset_focal(preset_focal, [True for _ in range(len(preset_focal))])
     scene.preset_pose(preset_pose, preset_mask)
 
     loss = scene.compute_global_alignment(init="mst", niter=niter, schedule=schedule, lr=lr)
@@ -174,7 +179,7 @@ for start_frame_index in range(INIT_FRAMES, TOTAL_FRAMES, NEW_FRAMES):
     pts3d = scene.get_pts3d()
     confidence_masks = scene.get_masks()
 
-    for i in range(PREVIOUS_FRAMES, PREVIOUS_FRAMES+NEW_FRAMES):
+    for i in range(1, len(preset_pose)-1):
         new_frame = {
             "file_path" : "/".join(images_array[i].split("/")[-2:]),
             "transform_matrix" : poses[i].tolist(),

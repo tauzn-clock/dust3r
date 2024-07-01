@@ -95,3 +95,34 @@ def calculate_new_params(current_parameters, device):
         new_parameters[i] = torch.cat([quat[i], euler[i,:3,3]])
 
     return new_parameters
+
+def interpolate_pose(p0, p1, step_cnt, device):
+
+    step = (torch.arange(step_cnt+1).to(device) / step_cnt).double()
+
+    #Interpolate translation
+    p0_t = p0[:3, 3]
+    p0_t = torch.tensor(p0_t).to(device).reshape(3, 1)
+    p1_t = p1[:3, 3]
+    p1_t = torch.tensor(p1_t).to(device).reshape(3, 1)
+
+    t = step * p1_t + (1 - step) * p0_t
+    t = t.transpose(0, 1).reshape(-1, 3, 1)
+
+    #Interpolate rotation
+    p0_R = p0[:3, :3]
+    p0_R = torch.tensor(p0_R).to(device).reshape(3, 3)
+    p1_R = p1[:3, :3]
+    p1_R = torch.tensor(p1_R).to(device).reshape(3, 3)
+
+    R = roma.utils.rotmat_slerp(p0_R, p1_R, step)
+
+    #Combine into 4x4 matrix
+    tf = torch.cat([R, t], dim=2)
+
+    bottom_row = torch.tensor([0, 0, 0, 1]).to(device)
+    bottom_row = bottom_row.unsqueeze(0).unsqueeze(0).expand(step_cnt+1, 1, 4)
+
+    tf = torch.cat((tf, bottom_row), dim=1).to(device)
+
+    return tf
