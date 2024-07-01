@@ -11,7 +11,6 @@ sys.path.append('/dust3r')
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
-import open3d as o3d
 import torch
 import json
 
@@ -24,14 +23,26 @@ from masked_dust3r.scripts.utils.math import *
 from masked_dust3r.scripts.utils.image import *
 
 
-DATA_PATH = "/dust3r/masked_dust3r/data/jackal_training_data_0"
+DATA_PATH = "/dust3r/masked_dust3r/data/jackal_drive"
 IMG_FILE_EXTENSION = ".png"
 MASK_FILE_EXTENSION = ".png"
 GAUSSIAN_SIGMA = 1.0
 INIT_FRAMES = 50
-NEW_FRAMES = 10
-PREVIOUS_FRAMES = 10
+NEW_FRAMES = 5
+PREVIOUS_FRAMES = 15
 TOTAL_FRAMES = 300
+
+INIT_WEIGHT_FOCAL = 0.1
+INIT_WEIGHT_Z = 0.1
+INIT_WEIGHT_ROT = 0.1
+INIT_WEIGHT_TRANS_SMOOTHNESS = 0.001
+INIT_WEIGHT_ROT_SMOOTHNESS = 0.001
+
+NEW_WEIGHT_FOCAL = 0
+NEW_WEIGHT_Z = 0.1
+NEW_WEIGHT_ROT = 0.1
+NEW_WEIGHT_TRANS_SMOOTHNESS = 0.00
+NEW_WEIGHT_ROT_SMOOTHNESS = 0.00
 
 IS_FOCAL_FIXED = True
 FOCAL_LENGTH = 4.74
@@ -68,11 +79,11 @@ init_scene = global_aligner(output, device=device, mode=GlobalAlignerMode.Modula
 loss = init_scene.compute_global_alignment(init="mst", niter=niter, schedule='cosine', lr=lr)
 
 scene = global_aligner(output, device=device, mode=GlobalAlignerMode.PlanePointCloudOptimizer, 
-                       weight_focal = 1, 
-                       weight_z = 0.1, 
-                       weight_rot = 0.1, 
-                       weight_trans_smoothness = 0.001,
-                       weight_rot_smoothness = 0.001)
+                        weight_focal = INIT_WEIGHT_FOCAL,
+                        weight_z = INIT_WEIGHT_Z,
+                        weight_rot = INIT_WEIGHT_ROT,
+                        weight_trans_smoothness = INIT_WEIGHT_TRANS_SMOOTHNESS,
+                        weight_rot_smoothness = INIT_WEIGHT_ROT_SMOOTHNESS)
 scene.im_poses = calculate_new_params(init_scene.im_poses,device)
 scene.im_focals = init_scene.im_focals
 loss = scene.compute_global_alignment(init="mst", niter=niter, schedule=schedule, lr=lr)
@@ -147,11 +158,11 @@ for start_frame_index in range(INIT_FRAMES, TOTAL_FRAMES, NEW_FRAMES):
     output = inference_with_mask(pairs, model, device, masks, GAUSSIAN_SIGMA, batch_size=batch_size)
 
     scene = global_aligner(output, device=device, mode=GlobalAlignerMode.PlanePointCloudOptimizer, 
-                       weight_focal = 1, 
-                       weight_z = 0.1, 
-                       weight_rot = 0.1, 
-                       weight_trans_smoothness = 0.001,
-                       weight_rot_smoothness = 0.001)
+                            weight_focal = NEW_WEIGHT_FOCAL,
+                            weight_z = NEW_WEIGHT_Z,
+                            weight_rot = NEW_WEIGHT_ROT,
+                            weight_trans_smoothness = NEW_WEIGHT_TRANS_SMOOTHNESS,
+                            weight_rot_smoothness = NEW_WEIGHT_ROT_SMOOTHNESS)
     scene.preset_focal(preset_focal, [True for _ in range(PREVIOUS_FRAMES+NEW_FRAMES)])
     scene.preset_pose(preset_pose, preset_mask)
 
