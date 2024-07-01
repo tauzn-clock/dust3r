@@ -42,9 +42,6 @@ schedule = 'cosine'
 lr = 0.01
 niter = 300
 
-with open(f"{DATA_PATH}/transforms.json") as f:
-    transforms = json.load(f)
-
 # Load the model
 
 model_name = "checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
@@ -88,22 +85,22 @@ confidence_masks = scene.get_masks()
 
 #Create transform file
 #TODO: Per frame camera model?
-transform = {}
-transform["camera_model"] = "OPENCV"
+transforms = {}
+transforms["camera_model"] = "OPENCV"
 
 averge_focal = focals.sum()/len(focals)
-transform["fl_x"] = averge_focal.item()
-transform["fl_y"] = averge_focal.item()
+transforms["fl_x"] = averge_focal.item()
+transforms["fl_y"] = averge_focal.item()
 
 #Find size of images
 img = Image.open(images_array[0])
 width, height = img.size
-transform["w"] = width
-transform["h"] = height
-transform["cx"] = width//2
-transform["cy"] = height//2
+transforms["w"] = width
+transforms["h"] = height
+transforms["cx"] = width//2
+transforms["cy"] = height//2
 
-transform["frames"] = []
+transforms["frames"] = []
 
 for i in range(len(poses)):
     if not((confidence_masks[i]==0).all()):
@@ -111,11 +108,11 @@ for i in range(len(poses)):
         frame["file_path"] = "/".join(images_array[i].split("/")[-2:])
         frame["transform_matrix"] = poses[i].detach().cpu().numpy().tolist()
         frame["mask_path"] = "/".join(masks_array[i].split("/")[-2:])
-        transform["frames"].append(frame)
+        transforms["frames"].append(frame)
 
 #Save transform file
 with open("{}/transforms.json".format(DATA_PATH), 'w') as f:
-    json.dump(transform, f, indent=4)
+    json.dump(transforms, f, indent=4)
 
 # STEP 2: Match Future Frames
 
