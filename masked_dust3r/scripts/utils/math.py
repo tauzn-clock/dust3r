@@ -77,12 +77,13 @@ def fit_to_xy_plane(a,b,c,d):
 
 def calculate_new_params(current_parameters, device):
     centre = torch.stack([p for p in current_parameters])[:,4:]
+    centre = signed_expm1(centre)
 
     a,b,c,d = best_fit_plane(centre)
     R = fit_to_xy_plane(a,b,c,d)
     R = torch.tensor(R).to(device).float()
 
-    all_poses = torch.stack([pose for pose in current_parameters])
+    all_poses = torch.stack([p for p in current_parameters])
     Q = all_poses[:,:4]
     T = signed_expm1(all_poses[:,4:7])
     euler = roma.RigidUnitQuat(Q, T).normalize().to_homogeneous()
@@ -92,7 +93,7 @@ def calculate_new_params(current_parameters, device):
 
     new_parameters = torch.nn.ParameterList([torch.nn.Parameter(torch.randn(7, dtype=torch.float32).to(device))] * len(current_parameters))
     for i in range(len(current_parameters)):
-        new_parameters[i] = torch.cat([quat[i], euler[i,:3,3]])
+        new_parameters[i] = torch.cat([quat[i], inv_signed_expm1(euler[i,:3,3])])
 
     return new_parameters
 
@@ -126,3 +127,7 @@ def interpolate_pose(p0, p1, step_cnt, device):
     tf = torch.cat((tf, bottom_row), dim=1).to(device)
 
     return tf
+
+def inv_signed_expm1(x):
+    sign = torch.sign(x)
+    return sign * (torch.log(torch.abs(x)) + 1)
