@@ -62,18 +62,23 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
         loss = loss + self.weight_focal * (all_focal.max() - all_focal.min())
 
         all_poses = torch.stack([pose for pose in self.im_poses])
-        loss = loss + self.weight_z * (all_poses[:,6].max() - all_poses[:,6].min())
+        #loss = loss + self.weight_z * (all_poses[:,6].max() - all_poses[:,6].min())
+        loss = loss + self.weight_z * all_poses[:,6].var()
 
         Q = all_poses[:,:4]
+        Q = torch.nn.functional.normalize(Q, p=2, dim=1)
         T = signed_expm1(all_poses[:,4:7])
+
         euler = roma.RigidUnitQuat(Q, T).normalize().to_homogeneous()
         euler = roma.euler.rotmat_to_euler("xyz", euler[:,:3,:3])
-        loss = loss + self.weight_rot * (euler[:,0].max() - euler[:,0].min())
-        loss = loss + self.weight_rot * (euler[:,1].max() - euler[:,1].min())
+        #loss = loss + self.weight_rot * (euler[:,0].max() - euler[:,0].min())
+        #loss = loss + self.weight_rot * (euler[:,1].max() - euler[:,1].min())
+        loss = loss + self.weight_rot * euler[:,0].var()
+        loss = loss + self.weight_rot * euler[:,1].var()
 
         for i in range(len(all_poses)-2):
-            loss = loss + self.weight_trans_smoothness * (all_poses[i,4:7] - 2*all_poses[i+1,4:7] + all_poses[i+2,4:7]).abs().mean()
-            loss = loss + self.weight_rot_smoothness * (all_poses[i,:4] - 2*all_poses[i+1,:4] + all_poses[i+2,:4]).abs().mean()
+            loss = loss + self.weight_trans_smoothness * (T[i] - 2*T[i+1] + T[i+2]).abs().mean()
+            loss = loss + self.weight_rot_smoothness * (Q[i] - 2*Q[i+1] + Q[i+2]).abs().mean()
 
         if ret_details:
             return loss, details
