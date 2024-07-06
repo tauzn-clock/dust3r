@@ -20,17 +20,21 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
     Graph edges: observations = (pred1, pred2)
     """
     def __init__(self, *args, 
-                 weight_focal = 0.1, 
-                 weight_z = 0.1, 
-                 weight_rot = 0.001, 
-                 weight_trans_smoothness = 0.01, 
-                 weight_rot_smoothness = 0.01, **kwargs):
+                 weight_focal = 0, 
+                 weight_z = 0, 
+                 weight_rot = 0, 
+                 weight_trans_smoothness = 0, 
+                 weight_rot_smoothness = 0, **kwargs):
         super().__init__(*args, **kwargs)
         self.weight_z = weight_z
         self.weight_focal = weight_focal
         self.weight_rot = weight_rot
         self.weight_trans_smoothness = weight_trans_smoothness
         self.weight_rot_smoothness = weight_rot_smoothness
+        self.OPENGL = torch.tensor([[1, 0, 0, 0],
+                    [0, -1, 0, 0],
+                    [0, 0, -1, 0],
+                    [0, 0, 0, 1]], dtype=torch.float32).to("cuda") # TODO: Redefine location 
 
     def forward(self, ret_details=False):
         pw_poses = self.get_pw_poses()  # cam-to-world
@@ -58,23 +62,25 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
 
         loss /= self.n_edges  # average over all pairs
 
-        all_focal = torch.stack([focal for focal in self.im_focals])
+        all_focal = torch.stack(list(self.im_focals))
         loss = loss + self.weight_focal * (all_focal.max() - all_focal.min())
+        #loss = loss + self.weight_focal * all_focal.var()
 
-        all_poses = torch.stack([pose for pose in self.im_poses])
-        #loss = loss + self.weight_z * (all_poses[:,6].max() - all_poses[:,6].min())
-        loss = loss + self.weight_z * all_poses[:,6].var()
-
+        all_poses = torch.stack(list(self.im_poses))
         Q = all_poses[:,:4]
         Q = torch.nn.functional.normalize(Q, p=2, dim=1)
         T = signed_expm1(all_poses[:,4:7])
+        tf = roma.RigidUnitQuat(Q, T).normalize().to_homogeneous()#.inverse()
+        tf = torch.matmul(tf, self.OPENGL)
 
-        euler = roma.RigidUnitQuat(Q, T).normalize().to_homogeneous()
-        euler = roma.euler.rotmat_to_euler("xyz", euler[:,:3,:3])
-        #loss = loss + self.weight_rot * (euler[:,0].max() - euler[:,0].min())
-        #loss = loss + self.weight_rot * (euler[:,1].max() - euler[:,1].min())
-        loss = loss + self.weight_rot * euler[:,0].var()
-        loss = loss + self.weight_rot * euler[:,1].var()
+        loss = loss + self.weight_z * (tf[:,2,3].max() - tf[:,2,3].min())
+        #loss = loss + self.weight_z * tf[:,2,3].var()
+
+        euler = roma.euler.rotmat_to_euler("xyz", tf[:,:3,:3])
+        loss = loss + self.weight_rot * (euler[:,0].max() - euler[:,0].min())
+        loss = loss + self.weight_rot * (euler[:,1].max() - euler[:,1].min())
+        #loss = loss + self.weight_rot * euler[:,0].var()
+        #loss = loss + self.weight_rot * euler[:,1].var()
 
         for i in range(len(all_poses)-2):
             loss = loss + self.weight_trans_smoothness * (T[i] - 2*T[i+1] + T[i+2]).abs().mean()
