@@ -44,6 +44,17 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
         weight_i = {i_j: self.conf_trf(c) for i_j, c in self.conf_i.items()}
         weight_j = {i_j: self.conf_trf(c) for i_j, c in self.conf_j.items()}
 
+        all_focal = torch.stack(list(self.im_focals))
+        all_poses = torch.stack(list(self.im_poses))
+        Q = all_poses[:,:4]
+        Q = torch.nn.functional.normalize(Q, p=2, dim=1)
+        T = signed_expm1(all_poses[:,4:7])
+        tf = roma.RigidUnitQuat(Q, T).normalize()#.to_homogeneous()#.inverse()
+        tf_inv = tf.inverse()
+        #tf = torch.matmul(tf, self.OPENGL)
+
+        off_z_axis = torch.tensor([]).to(Q.device)
+
         loss = 0
         if ret_details:
             details = -torch.ones((self.n_imgs, self.n_imgs))
@@ -57,34 +68,36 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
             lj = self.dist(proj_pts3d[j], aligned_pred_j, weight=weight_j[i_j]).mean()
             loss = loss + li + lj
 
+            cur_axis = 1 - torch.nn.functional.normalize((tf[j] @ tf_inv[i]).linear[:3],p=2, dim=0, eps=1e-12)[2].abs()
+            off_z_axis = torch.cat((off_z_axis, cur_axis.unsqueeze(0)))
+
             if ret_details:
                 details[i, j] = li + lj
 
         loss /= self.n_edges  # average over all pairs
 
-        all_focal = torch.stack(list(self.im_focals))
-        loss = loss + self.weight_focal * (all_focal.max() - all_focal.min())
-        #loss = loss + self.weight_focal * all_focal.var()
+        #loss = loss + self.weight_focal * (all_focal.max() - all_focal.min()) ** 2
+        loss = loss + self.weight_focal * all_focal.var()
 
-        all_poses = torch.stack(list(self.im_poses))
-        Q = all_poses[:,:4]
-        Q = torch.nn.functional.normalize(Q, p=2, dim=1)
-        T = signed_expm1(all_poses[:,4:7])
-        tf = roma.RigidUnitQuat(Q, T).normalize().to_homogeneous()#.inverse()
-        tf = torch.matmul(tf, self.OPENGL)
+        #loss = loss + self.weight_z * (T[:,2].max() - T[:,2].min()) ** 2
+        loss = loss + self.weight_z * T[:,2].var()
 
-        loss = loss + self.weight_z * (tf[:,2,3].max() - tf[:,2,3].min())
-        #loss = loss + self.weight_z * tf[:,2,3].var()
+        loss = loss + self.weight_rot * off_z_axis.mean()
 
-        euler = roma.euler.rotmat_to_euler("xyz", tf[:,:3,:3])
-        loss = loss + self.weight_rot * (euler[:,0].max() - euler[:,0].min())
-        loss = loss + self.weight_rot * (euler[:,1].max() - euler[:,1].min())
+        #x_w = tf.linear[:,0]
+        #y_w = tf.linear[:,1]
+
+        #loss = loss + self.weight_rot * (x_w.max() - x_w.min())
+        #loss = loss + self.weight_rot * (y_w.max() - y_w.min())
+        #euler = roma.euler.rotmat_to_euler("xyz", tf[:,:3,:3])
+        #loss = loss + self.weight_rot * (euler[:,0].max() - euler[:,0].min())
+        #loss = loss + self.weight_rot * (euler[:,1].max() - euler[:,1].min())
         #loss = loss + self.weight_rot * euler[:,0].var()
         #loss = loss + self.weight_rot * euler[:,1].var()
 
         for i in range(len(all_poses)-2):
             loss = loss + self.weight_trans_smoothness * (T[i] - 2*T[i+1] + T[i+2]).abs().mean()
-            loss = loss + self.weight_rot_smoothness * (Q[i] - 2*Q[i+1] + Q[i+2]).abs().mean()
+        #    loss = loss + self.weight_rot_smoothness * (Q[i] - 2*Q[i+1] + Q[i+2]).abs().mean()
 
         if ret_details:
             return loss, details
