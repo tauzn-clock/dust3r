@@ -44,7 +44,8 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
         weight_i = {i_j: self.conf_trf(c) for i_j, c in self.conf_i.items()}
         weight_j = {i_j: self.conf_trf(c) for i_j, c in self.conf_j.items()}
 
-        all_focal = torch.stack(list(self.im_focals))
+        #all_focal = torch.stack(list(self.im_focals))
+        all_focal = self.get_focals().reshape(-1)
         all_poses = torch.stack(list(self.im_poses))
         Q = all_poses[:,:4]
         Q = torch.nn.functional.normalize(Q, p=2, dim=1)
@@ -53,7 +54,7 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
         tf_inv = tf.inverse()
         #tf = torch.matmul(tf, self.OPENGL)
 
-        off_z_axis = torch.tensor([]).to(Q.device)
+        off_z_axis = torch.zeros(len(self.edges)).to(Q.device)
 
         loss = 0
         if ret_details:
@@ -69,7 +70,7 @@ class PlanePointCloudOptimizer (ModularPointCloudOptimizer):
             loss = loss + li + lj
 
             cur_axis = 1 - torch.nn.functional.normalize((tf[j] @ tf_inv[i]).linear[:3],p=2, dim=0, eps=1e-12)[2].abs()
-            off_z_axis = torch.cat((off_z_axis, cur_axis.unsqueeze(0)))
+            off_z_axis[e] = cur_axis.unsqueeze(0)
 
             if ret_details:
                 details[i, j] = li + lj
