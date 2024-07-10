@@ -28,9 +28,9 @@ DATA_PATH = "/dust3r/masked_dust3r/data/jackal_drive"
 IMG_FILE_EXTENSION = ".png"
 MASK_FILE_EXTENSION = ".png"
 GAUSSIAN_SIGMA = 1.0
-INIT_FRAMES = 5
-TOTAL_FRAMES = 50
-PREVIOUS_FRAMES = 5
+INIT_FRAMES = 30
+TOTAL_FRAMES = 300
+PREVIOUS_FRAMES = 2
 
 INIT_WEIGHT_FOCAL = 0.1
 INIT_WEIGHT_Z = 0.1
@@ -112,7 +112,7 @@ transforms["cy"] = height//2
 
 transforms["frames"] = []
 
-for i in range(len(poses)):
+for i in range(0,len(poses)):
     if not((confidence_masks[i]==0).all()):
         frame = {}
         frame["file_path"] = "/".join(images_array[i].split("/")[-2:])
@@ -169,7 +169,10 @@ for frame in range(len(transforms["frames"])):
                             weight_trans_smoothness = NEW_WEIGHT_TRANS_SMOOTHNESS,
                             weight_rot_smoothness = NEW_WEIGHT_ROT_SMOOTHNESS)
     scene.preset_focal(preset_focal, [True for _ in range(len(preset_focal))])
-    scene.preset_pose(preset_pose, preset_mask)
+    #scene.preset_pose(preset_pose, preset_mask)
+    scene.preset_pose(preset_pose, [True for _ in range(len(preset_focal))])
+    for i in range(1, len(preset_focal)-1):
+        scene.im_poses[i].requires_grad = True
 
     loss = scene.compute_global_alignment(init="mst", niter=niter, schedule=schedule, lr=lr)
 
