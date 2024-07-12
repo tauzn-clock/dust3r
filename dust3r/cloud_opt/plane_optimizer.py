@@ -152,7 +152,8 @@ def sequntial_frames(imshapes, edges, pred_i, pred_j, conf_i, conf_j, im_conf, m
     i_j = edge_str(0, 1)
     pts3d[0] = pred_i[i_j].clone()
     pts3d[1] = pred_j[i_j].clone()
-    im_poses[0] = torch.eye(4, device=device)
+    s, R, T = init_fun.rigid_points_registration(pred_i[i_j], pts3d[0], conf=conf_i[i_j])
+    im_poses[0] = init_fun.sRT_to_4x4(1, R, T, device)
     im_focals[0] = init_fun.estimate_focal(pred_i[i_j])
     
     for i in range(1,n_imgs-1):
@@ -163,9 +164,6 @@ def sequntial_frames(imshapes, edges, pred_i, pred_j, conf_i, conf_j, im_conf, m
         pts3d[j] = geotrf(trf, pred_j[i_j])
         im_poses[j] = init_fun.sRT_to_4x4(1, R, T, device)
         msp_edges.append((i, j))
-        if has_im_poses and im_poses[i] is None:
-            im_poses[i] = init_fun.sRT_to_4x4(1, R, T, device)   
-    print(im_poses[1])
 
     for i in range(n_imgs-1):
         j = i+1

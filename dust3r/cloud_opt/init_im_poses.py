@@ -166,8 +166,8 @@ def minimum_spanning_tree(imshapes, edges, pred_i, pred_j, conf_i, conf_j, im_co
             done.add(j)
             msp_edges.append((i, j))
 
-            if has_im_poses and im_poses[i] is None:
-                im_poses[i] = sRT_to_4x4(1, R, T, device)
+            if has_im_poses and im_poses[j] is None:
+                im_poses[j] = sRT_to_4x4(1, R, T, device)
 
         elif j in done:
             if verbose:
