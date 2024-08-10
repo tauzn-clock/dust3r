@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
 # DUST3R
 RUN apt-get update && apt-get install -y \
