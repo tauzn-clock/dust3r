@@ -30,10 +30,10 @@ DATA_PATH = "/dust3r/masked_dust3r/data/jackal_irl_one_spin"
 IMG_FILE_EXTENSION = ".png"
 MASK_FILE_EXTENSION = ".png"
 
-INIT_FRAMES = 50
+INIT_FRAMES = 120
 NEW_FRAMES = 20
 PREVIOUS_FRAMES = 5
-TOTAL_FRAMES = 140
+TOTAL_FRAMES = 120
 
 INIT_WEIGHT_FOCAL = 0.01 * 0
 INIT_WEIGHT_Z = 0.1 
@@ -43,9 +43,9 @@ INIT_WEIGHT_ROT_SMOOTHNESS = 0.001 * 0
 
 NEW_WEIGHT_FOCAL = 0.1 * 0
 NEW_WEIGHT_Z = 0.1
-NEW_WEIGHT_ROT = 0.1
-NEW_WEIGHT_TRANS_SMOOTHNESS = 0.0001
-NEW_WEIGHT_ROT_SMOOTHNESS = 0.00001
+NEW_WEIGHT_ROT = 0.1 * 0 
+NEW_WEIGHT_TRANS_SMOOTHNESS = 0.0001 * 0
+NEW_WEIGHT_ROT_SMOOTHNESS = 0.00001 * 0
 
 USE_COMMON_INTRINSICS = False
 
@@ -80,7 +80,7 @@ images = load_images(images_array, size=512, verbose=True)
 _,_,H,W = images[0]["img"].shape
 masks = load_masks(masks_array, H, W, device)
 
-pairs = make_pairs(images, scene_graph='swin-3', prefilter=None, symmetrize=True)
+pairs = make_pairs(images, scene_graph='swin-1', prefilter=None, symmetrize=True)
 output = inference_with_mask(pairs, model, device, masks, kernel, batch_size=batch_size)
 del pairs
 
@@ -209,9 +209,9 @@ for start_frame_index in range(INIT_FRAMES, TOTAL_FRAMES, NEW_FRAMES):
             frame = {}
             frame["file_path"] = "/".join(images_array[i].split("/")[-2:])
             frame["transform_matrix"] = poses[i].detach().cpu().numpy()
-            frame["transform_matrix"] = np.linalg.inv(frame["transform_matrix"])
-            frame["transform_matrix"] = OPENGL @ frame["transform_matrix"]
-            frame["transform_matrix"] = np.linalg.inv(frame["transform_matrix"])
+            #frame["transform_matrix"] = np.linalg.inv(frame["transform_matrix"])
+            #frame["transform_matrix"] = OPENGL @ frame["transform_matrix"]
+            #frame["transform_matrix"] = np.linalg.inv(frame["transform_matrix"])
             frame["transform_matrix"] = frame["transform_matrix"].tolist()
             frame["mask_path"] = "/".join(masks_array[i].split("/")[-2:])
             transforms["frames"].append(frame)
