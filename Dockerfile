@@ -1,4 +1,4 @@
-FROM python:3.11
+FROM ubuntu:focal
 
 # DUST3R
 RUN apt-get update && apt-get install -y \
