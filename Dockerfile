@@ -1,4 +1,4 @@
-FROM ubuntu:focal
+FROM ubuntu:20.04
 
 # DUST3R
 RUN apt-get update && apt-get install -y \
