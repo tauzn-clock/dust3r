@@ -20,3 +20,6 @@ RUN pip install -r requirements.txt
 RUN pip install -r requirements_optional.txt
 RUN pip install opencv-python==4.8.0.74
 RUN pip install open3d==0.18.0
+RUN pip install tensorflow
+
+#RUN pip3 install opencv-python-headless # Install inside docker by terminal
